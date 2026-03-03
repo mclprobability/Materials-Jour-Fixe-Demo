@@ -1,0 +1,7 @@
+paths:
+  log_path: "logs" # do not delete this, post_hoc_inference.utils.log relies on that path
+
+  raw_data: "/some/absolute/path/to/your/data/on/server/or/project/folder" # a placeholder, change as you like, 
+
+constants:
+  k-fold: 5
