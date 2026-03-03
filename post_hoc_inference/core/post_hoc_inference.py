@@ -73,7 +73,7 @@ class PostHocInference:
         self._pyro_model = sp_to_pyro.create_pyro_model(
             self._expr_sp_parameterized,
             self._input_symbols,
-            latent_vars
+            latent_vars,
             output_dim=output_dim,
         )
         self._setup_inference()
