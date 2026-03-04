@@ -1,0 +1,48 @@
+__pycache__
+**.pyc
+.ipynb_checkpoints
+.pytest_cache
+**.code-workspace
+.vscode
+docs/build/*
+
+# for pip --editable installs
+*.egg-info
+build
+post_hoc_inference/__version__.py
+post_hoc_inference/logs/*
+
+# ignore data folder, include empty folders, see .gitignore in each subfolder
+data/*
+!data/0_raw/
+!data/1_processed/
+!data/2_models/
+!data/dummy_test_data/
+
+# ignore local configs
+post_hoc_inference/config/local
+post_hoc_inference/config/local/
+post_hoc_inference/config/local/*
+
+# ignore outputs
+runs/*
+output/*
+
+# ignore specific data files
+*.h5
+*.hdf5
+*.csv
+*.log
+*.pkl
+
+# ignore reports folder, NOTE: it includes empty folders, see .gitignore in each subfolder
+reports/*
+
+# ignore scanner files
+deps.html
+deps.pdf
+deps.md
+
+# ignore package files
+dist/*
+
