@@ -47,7 +47,6 @@ class PostHocInference:
         self,
         expr: sp.Expr,
         input_symbols: list[sp.Symbol],
-        extra_latent_vars: list = [],
         output_dim=1,
         inference_params: dict = {},
     ) -> None:
@@ -57,11 +56,10 @@ class PostHocInference:
             expr (sp.Expr): The symbolic mathematical expression representing the core model structure.
             input_symbols (list[sp.Symbol]): A list of SymPy symbols corresponding to the input features (independent variables).
             output_dim (int, optional): The dimensionality of the model's output. Defaults to 1.
-            inference_params (dict, optional): Configuration parameters for the MCMC sampling (e.g., 'n_chains', 'n_samples', 'n_warmup_samples', 'kernel_name'). Defaults to {}.
+            inference_params (dict, optional): Configuration parameters for the MCMC sampling (e.g., 'n_chains': int, 'n_samples': int, 'n_warmup_samples': int, 'kernel_name': ('random_walk', 'nuts')). Defaults to {}.
         """
         self._expr_sp = expr
         self._input_symbols = input_symbols
-        self._extra_latent_vars = extra_latent_vars
         self._inference_params = inference_params
         self._mcmc = None
         self._svi = None
@@ -69,11 +67,10 @@ class PostHocInference:
         self._expr_sp_parameterized, self._exp_param_values = (
             sp_utils.replace_constants_with_parameters(self._expr_sp)
         )
-        latent_vars = list(self._exp_param_values.keys()) + self._extra_latent_vars
         self._pyro_model = sp_to_pyro.create_pyro_model(
             self._expr_sp_parameterized,
             self._input_symbols,
-            latent_vars,
+            list(self._exp_param_values.keys()),
             output_dim=output_dim,
         )
         self._setup_inference()
@@ -85,7 +82,7 @@ class PostHocInference:
             None
         """
         self._kernel_name = self._inference_params.get("kernel_name", "nuts")
-        self._jit_compile = self._inference_params.get("jit_compile", True)
+        self._jit_compile = self._inference_params.get("jit_compile", False)
         self._n_chains = self._inference_params.get("n_chains", 1)
 
         self._initial_params = pyro_utils.get_initial_param_dict(
