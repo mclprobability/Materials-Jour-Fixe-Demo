@@ -2,11 +2,11 @@
 
 The **Post-hoc Inference** library converts a deterministic SymPy expression into a probabilistic model and performs Bayesian (MCMC) inference on the expression's numeric constants. This enables uncertainty quantification over parameters, credible intervals for predictions, principled noise estimation, and robustness against overfitting — while keeping your original symbolic model structure. 
 
-The project exposes a scikit-learn style estimator **PostHocInference** that automates replacing numeric constants with learnable parameters, compiles the symbolic model into a Pyro probabilistic model, and runs MCMC sampling.
+The project exposes a scikit-learn style estimator **Equayes** that automates replacing numeric constants with learnable parameters, compiles the symbolic model into a Pyro probabilistic model, and runs MCMC sampling.
 
 ## Highlights
 - Converts an equation given as SymPy expressions → Probabilsitic (Pyro) model. See [create_pyro_model()](post_hoc_inference/core/pyro_backend/sympy_to_pyro.py) in sympy_to_pyro.py
-- Simple scikit-learn style API: PostHocInference(expr, input_symbols, output_dim, inference_params) with fit, predict, get_posterior, inference_diagnostics.
+- Simple scikit-learn style API: Equayes(expr, input_symbols, output_dim, inference_params) with fit, predict, get_posterior, inference_diagnostics.
 - Supports any parameterized function $f_\theta:(x_1, x_2, ..., x_N) \rightarrow (y_1, y_2, ..., y_M)$ with parameters $\theta \in \mathcal{R}^K$ and scalar inputs $x_i, y_j \in \mathcal{R} \text{, }\forall i, j$. 
 
 Poit wise fit
@@ -62,7 +62,7 @@ Minimal example usage of the tool - a more comprehensive example is provided in 
 import sympy as sp
 import torch
 
-from post_hoc_inference.core.post_hoc_inference import PostHocInference
+from post_hoc_inference.core.post_hoc_inference import Equayes
 
 # 1) Define a simple SymPy model: y = a*x + b
 x = sp.symbols("x")
@@ -79,7 +79,7 @@ inference_params = {
    "n_chains": 1, 
    "jit_compile": False
 }
-model = PostHocInference(expr, input_symbols=[x], output_dim=1, inference_params=inference_params)
+model = Equayes(expr, input_symbols=[x], output_dim=1, inference_params=inference_params)
 
 # 4) Fit and predict
 model.fit(X, y)                       # runs MCMC
