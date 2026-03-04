@@ -32,8 +32,8 @@ class Equayes:
     identifies its numeric constants, and replaces them with learnable parameters. It then
     compiles this symbolic expression into a probabilistic Pyro model.
 
-    By providing a familiar API (fit, predict, score), users can easily apply Markov Chain
-    Monte Carlo (MCMC) methods or Variational Inference (VI) to fit the symbolic model to empirical data. This allows users
+    Via the scikit-learn like API (fit, predict, score), users can easily apply Markov Chain
+    Monte Carlo (MCMC) methods or Variational Inference (VI) to fit the symbolic model to empirical data. This allows
     to not only find optimal parameter values, but also quantify uncertainty, extract posterior
     distributions, and generate predictive distributions with confidence bounds.
 
@@ -48,28 +48,105 @@ class Equayes:
         expr: sp.Expr,
         input_symbols: list[sp.Symbol],
         output_dim=1,
-        inference_params: dict = {},
+        inference_method_name: str = "mcmc",
+        kernel_name: str = "nuts",
+        n_samples: int = 1000,
+        n_warmup_samples: int = 1000,
+        n_chains: int = 1,
+        initial_step_size: float = 1e-2,
+        vi_iter: int = 1000,
+        vi_lr: float = 1e-2,
+        n_particles: int = 1,
+        jit_compile: bool = False,
     ) -> None:
         """Initializes the Equayes model for Bayesian inference on SymPy expressions.
 
         Args:
             expr (sp.Expr): The symbolic mathematical expression representing the core model structure.
-            input_symbols (list[sp.Symbol]): A list of SymPy symbols corresponding to the input features (independent variables).
-            output_dim (int, optional): The dimensionality of the model's output. Defaults to 1.
-            inference_params (dict, optional): Configuration parameters for the MCMC sampling (e.g., 'n_chains': int, 'n_samples': int, 'n_warmup_samples': int, 'kernel_name': ('random_walk', 'nuts')). Defaults to {}.
+                All numeric constants in the expression are automatically detected and replaced
+                with learnable parameters during initialization.
+
+            input_symbols (list[sp.Symbol]): A list of SymPy symbols corresponding to the input
+                features (independent variables) of the model. The order of the symbols must
+                match the column order of the input tensor provided during fitting.
+
+            output_dim (int, optional): The dimensionality of the model's output. This determines
+                the shape of the likelihood and predictive samples. Defaults to 1.
+
+            inference_method_name (str, optional): The inference strategy used to fit the model.
+                Supported options are:
+                - "mcmc": Markov Chain Monte Carlo sampling
+                - "vi": Variational Inference
+                Defaults to "mcmc".
+
+            kernel_name (str, optional): The MCMC transition kernel used when
+                `inference_method="mcmc"`. Supported options are:
+                - "nuts": No-U-Turn Sampler (Hamiltonian Monte Carlo variant)
+                - "random_walk": Random Walk Metropolis-Hastings
+                Defaults to "nuts".
+
+            n_samples (int, optional): The number of posterior samples to draw
+                after warm-up when using MCMC. Ignored if `inference_method="vi"`.
+                Defaults to 1000.
+
+            n_warmup_samples (int, optional): The number of warm-up (burn-in) steps
+                for MCMC sampling. These samples are discarded and used only for
+                adaptation of the sampler. Ignored if `inference_method="vi"`.
+                Defaults to 1000.
+
+            n_chains (int, optional): The number of independent MCMC chains to run.
+                Increasing this value improves convergence diagnostics but increases
+                computational cost. Ignored if `inference_method="vi"`.
+                Defaults to 1.
+
+            initial_step_size (float, optional): The initial step size for the MCMC
+                sampler. For NUTS, this serves as the starting point for step size
+                adaptation. For Random Walk, it controls the proposal scale.
+                Ignored if `inference_method="vi"`. Defaults to 1e-2.
+
+            vi_iter (int, optional): The number of optimization iterations used
+                when `inference_method="vi"`. Ignored if `inference_method="mcmc"`.
+                Defaults to 1000.
+
+            vi_lr (float, optional): The learning rate for the optimizer used in
+                Variational Inference. Controls the step size of gradient-based
+                updates. Ignored if `inference_method="mcmc"`.
+                Defaults to 1e-2.
+
+            n_particles (int, optional): The number of samples from the variational
+                distribution (called particles) used to estimate the Evidence
+                Lower Bound (ELBO) during Variational Inference. Higher values
+                reduce gradient variance but increase computational cost.
+                Ignored if `inference_method="mcmc"`.
+                Defaults to 1.
+
+            jit_compile (bool, optional): If True, enables Just-In-Time (JIT)
+                compilation for supported inference components to potentially
+                improve execution speed. Defaults to False.
         """
-        self._expr_sp = expr
-        self._input_symbols = input_symbols
-        self._inference_params = inference_params
-        self._mcmc = None
-        self._svi = None
+
+        self.expr_sp = expr
+        self.input_symbols = input_symbols
+        self.inference_method_name = inference_method_name  # in (mcmc, vi)
+        self.kernel_name = kernel_name  # in (nuts, random_walk)
+        self.n_samples = n_samples
+        self.n_warmup_samples = n_warmup_samples
+        self.n_chains = n_chains
+        self.initial_step_size = initial_step_size
+        self.vi_iter = vi_iter
+        self.vi_lr = vi_lr
+        self.n_particles = n_particles
+        self.jit_compile = jit_compile
+
+        self.mcmc_ = None
+        self.svi_ = None
 
         self._expr_sp_parameterized, self._exp_param_values = (
             sp_utils.replace_constants_with_parameters(self._expr_sp)
         )
         self._pyro_model = sp_to_pyro.create_pyro_model(
             self._expr_sp_parameterized,
-            self._input_symbols,
+            self.input_symbols,
             list(self._exp_param_values.keys()),
             output_dim=output_dim,
         )
@@ -81,77 +158,59 @@ class Equayes:
         Args:
             None
         """
-        self._kernel_name = self._inference_params.get("kernel_name", "nuts")
-        self._jit_compile = self._inference_params.get("jit_compile", False)
-        self._n_chains = self._inference_params.get("n_chains", 1)
-
         self._initial_params = pyro_utils.get_initial_param_dict(
-            self._exp_param_values, n_chains=self._n_chains
+            self._exp_param_values, n_chains=self.n_chains
         )
 
-        match (self._kernel_name):
-            case "nuts" | "random_walk":
+        match self.inference_method_name:
+            case "mcmc":
                 self._setup_mcmc()
             case "vi":
                 self._setup_svi()
             case _:
                 raise NotImplementedError(
-                    f"Kernel '{self._kernel_name}' not implemented. Valid kernels: 'nuts', 'random_walk', 'vi'."
+                    f"inference_method_name '{self.inference_method_name}' not implemented. Valid inference_method_name: 'mcmc', 'vi'."
                 )
 
     def _setup_mcmc(self):
         """Configures the MCMC inference kernel and sampler based on the provided initialization parameters."""
 
-        self._n_warmup_samples = self._inference_params.get("n_warmup_samples", 1000)
-        self._n_samples = self._inference_params.get("n_samples", 1000)
-        initial_step_size = self._inference_params.get("initial_step_size", 1e-2)
-
-        match (self._kernel_name):
+        match self._kernel_name:
             case "nuts":
                 self._kernel = NUTS(
                     self._pyro_model,
-                    jit_compile=self._jit_compile,
-                    step_size=initial_step_size,
+                    jit_compile=self.jit_compile,
+                    step_size=self.initial_step_size,
                 )
             case "random_walk":
                 self._kernel = RandomWalkKernel(
-                    self._pyro_model, init_step_size=initial_step_size
+                    self._pyro_model,
+                    init_step_size=self.initial_step_size,
                 )
             case _:
                 raise NotImplementedError(
-                    f"Kernel '{self._kernel_name}' not implemented. Valid kernels: 'nuts', 'random_walk'."
+                    f"Kernel '{self.kernel_name}' not implemented. Valid kernels: 'nuts', 'random_walk'."
                 )
-        self._mcmc = MCMC(
-            self._kernel,
-            num_samples=self._n_samples,
-            warmup_steps=self._n_warmup_samples,
-            num_chains=self._n_chains,
-            initial_params=self._initial_params,
-        )
+        
 
     def _setup_svi(self):
         """Configures the VI inference kernel and optimizer based on the provided initialization parameters."""
-
-        self._n_vi_iter = self._inference_params.get("vi_iter", 1000)
-        self._n_particles = self._inference_params.get("n_particles", 1)
 
         self._guide = pyro.infer.autoguide.AutoMultivariateNormal(
             self._pyro_model, init_loc_fn=init_to_value(values=self._initial_params)
         )
         self._optim = pyro.optim.ClippedAdam(
-            {"lr": 1e-2, "lrd": (1e-2) ** (1 / self._n_vi_iter)}
+            {"lr": self.vi_lr, "lrd": (1e-1) ** (1 / self._n_vi_iter)}
         )
         if self._jit_compile:
             self._loss = JitTrace_ELBO(
-                num_particles=self._n_particles, vectorize_particles=True
+                num_particles=self.n_particles, vectorize_particles=True
             )
         else:
             self._loss = Trace_ELBO(
-                num_particles=self._n_particles, vectorize_particles=True
+                num_particles=self.n_particles, vectorize_particles=True
             )
-        self._svi = pyro.infer.SVI(
-            self._pyro_model, self._guide, self._optim, self._loss
-        )
+        
 
     def fit(self, X: torch.Tensor | None, y: torch.Tensor) -> None | list:
         """Fits the Bayesian model to the provided data using the configured inference method.
@@ -164,19 +223,34 @@ class Equayes:
         if X is not None:
             assert X.dim() == 2 and "X shape must be (batch, features)"
         assert y.dim() == 2 and "y shape must be (batch, features)"
-        if self._mcmc is not None:
-            self._mcmc.run(X, y)
-        elif self._svi is not None:
-            self._losses = []
-            for i in range(self._n_vi_iter):
-                loss = self._svi.step(X, y)
-                self._losses.append(loss)
-                if i % 100 == 0:
-                    logger.debug(f"[SVI] loss {i:4d}: {loss:.4f}")
-            return self._losses
-        else:
-            raise Exception("Either '_mcmc' or '_svi' must be initialized.")
+        match self.inference_method_name:
+            case "mcmc":
+                if self.mcmc_ is None: #  allows to provide a user defined MCMC instance, too. 
+                    self.mcmc_ = MCMC(
+                        self._kernel,
+                        num_samples=self.n_samples,
+                        warmup_steps=self.n_warmup_samples,
+                        num_chains=self.n_chains,
+                        initial_params=self._initial_params,
+                    )
 
+                self.mcmc_.run(X, y)
+            case "vi":
+                if self.svi_ is None: #  allows to provide a user defined SVI instance, too. 
+                    self.svi_ = pyro.infer.SVI(
+                        self._pyro_model, self._guide, self._optim, self._loss
+                    )
+                self.losses_ = []
+                for i in range(self._n_vi_iter):
+                    loss = self.svi_.step(X, y)
+                    self.losses_.append(loss)
+                    if i % 100 == 0:
+                        logger.debug(f"[SVI] loss {i:4d}: {loss:.4f}")
+                return self.losses_
+            case _:
+                raise NotImplementedError(
+                    f"inference_method_name '{self.inference_method_name}' not implemented. Valid inference_method_name: 'mcmc', 'vi'."
+                )
     def predict(
         self,
         X: torch.Tensor | None,
@@ -193,11 +267,11 @@ class Equayes:
             parallel (bool, optional): If True, vectorize the model and evaluate the posterior samples in parallel. Defaults to False.
 
         Returns:
-            dict: A dictionary containing the predictive samples generated by the underlying Pyro model.
+            dict: A dictionary containing the predictive samples generated by the underlying Pyro model for each latent parameter.
         """
         assert (
-            self._mcmc is not None
-            or self._svi is not None
+            self.mcmc_ is not None
+            or self.svi_ is not None
             and "Regressor not trained. Run fit() first."
         )
         if X is not None:
@@ -211,11 +285,11 @@ class Equayes:
                 parallel=parallel,
             )
         else:
-            if self._mcmc is not None:
+            if self.mcmc_ is not None:
                 predictive = Predictive(
                     self._pyro_model,
                     posterior_samples=select_samples(
-                        self._mcmc.get_samples(), n_predictive_samples
+                        self.mcmc_.get_samples(), n_predictive_samples
                     ),
                     parallel=parallel,
                 )
@@ -229,20 +303,20 @@ class Equayes:
         return predictive(X)
 
     def inference_diagnostics(self, print_summary=True) -> dict:
-        """Computes and optionally prints diagnostic statistics for the MCMC sampling run.
+        """Computes and optionally prints diagnostic of the inference run.
 
         Args:
             print_summary (bool, optional): Whether to print the MCMC summary table to the console. Defaults to True.
 
         Returns:
-            dict: A dictionary containing diagnostic metrics (like effective sample size and Gelman-Rubin statistics).
+            dict: A dictionary containing diagnostic metrics (like effective sample size and Gelman-Rubin statistics for MCMC, and the losses for VI).
         """
-        if self._mcmc is not None:
+        if self.mcmc_ is not None:
             if print_summary:
-                self._mcmc.summary()
-            return self._mcmc.diagnostics()
+                self.mcmc_.summary()
+            return self.mcmc_.diagnostics()
         else:
-            return {"loss": self._losses}
+            return {"loss": self.losses_}
 
     def score(self, X, y=None):
         pass
@@ -254,7 +328,7 @@ class Equayes:
         Returns:
             arviz.InferenceData | torch.distributions.Distribution: The posterior distribution.
         """
-        if self._mcmc is not None:
+        if self.mcmc_ is not None:
             return az.from_pyro(self._mcmc)
         return self._guide.get_posterior()
 
