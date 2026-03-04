@@ -3,7 +3,7 @@ import matplotlib
 matplotlib.use("Agg")  # no GUI-Backend
 
 import matplotlib.pyplot as plt
-from post_hoc_inference.utils.git_info import get_git_info
+from equayes.utils.git_info import get_git_info
 import inspect
 import os
 

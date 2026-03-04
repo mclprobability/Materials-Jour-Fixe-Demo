@@ -7,9 +7,9 @@ objects from .utils package like in the example below.
 
 Example:
 From e.g. the repositories main.py just write
-    >>> from post_hoc_inference.utils import LOG_CONFIG
+    >>> from equayes.utils import LOG_CONFIG
 instead of
-    >>> from post_hoc_inference.utils.configuration import load_yaml_config
+    >>> from equayes.utils.configuration import load_yaml_config
     >>> LOG_CONFIG = load_yaml_config("logging_config.yml")
 """
 

@@ -47,7 +47,7 @@ def setup_logging():
         raise RuntimeError("Error in setting up logging configuration.") from e
 
 
-def getLogger(src_name="post_hoc_inference"):
+def getLogger(src_name="equayes"):
     """
     Returns a logger object fully configured by LOG_CONFIG.
 

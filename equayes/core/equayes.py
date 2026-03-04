@@ -16,16 +16,16 @@ from pyro.infer import (
 from pyro.infer.autoguide import init_to_value
 from pyro.infer.mcmc.util import select_samples
 
-from post_hoc_inference.core.pyro_backend import sympy_to_pyro as sp_to_pyro
-from post_hoc_inference.core.pyro_backend import utils as pyro_utils
-from post_hoc_inference.core.sympy_backend import utils as sp_utils
-from post_hoc_inference.utils import log
+from equayes.core.pyro_backend import sympy_to_pyro as sp_to_pyro
+from equayes.core.pyro_backend import utils as pyro_utils
+from equayes.core.sympy_backend import utils as sp_utils
+from equayes.utils import log
 
 logger = log.getLogger(__name__)
 
 
-class PostHocInference:
-    """A scikit-learn style estimator for performing Bayesian post-hoc inference on deterministic equations.
+class Equayes:
+    """A scikit-learn style estimator for performing Bayesian inference on deterministic equations.
 
     This class bridges the gap between symbolic mathematics and probabilistic machine learning.
     It takes a deterministic mathematical model (defined as a SymPy expression), automatically
@@ -50,7 +50,7 @@ class PostHocInference:
         output_dim=1,
         inference_params: dict = {},
     ) -> None:
-        """Initializes the PostHocInference model for Bayesian inference on SymPy expressions.
+        """Initializes the Equayes model for Bayesian inference on SymPy expressions.
 
         Args:
             expr (sp.Expr): The symbolic mathematical expression representing the core model structure.

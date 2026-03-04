@@ -16,9 +16,9 @@ except:
     pass
 
 # Importing here in the __init__.py like below makes it possible to import with
-# >>> from post_hoc_inference import PostHocInference
+# >>> from equayes import Equayes
 # instead of having to know, in which module (.py file) of the core package,
-# the class PostHocInference is implemented.
+# the class Equayes is implemented.
 # This means, we make module level objects importable at package level.
-from .core.post_hoc_inference import PostHocInference
+from .core.equayes import Equayes
 from .utils import CONFIG, PARAMETERS, PROJECT_ROOT

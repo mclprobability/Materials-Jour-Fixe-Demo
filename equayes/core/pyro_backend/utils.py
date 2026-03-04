@@ -4,7 +4,7 @@ import pyro
 import torch
 from pyro.infer import Predictive
 
-from post_hoc_inference.utils import log
+from equayes.utils import log
 
 logger = log.getLogger("Pyro Utils")
 
