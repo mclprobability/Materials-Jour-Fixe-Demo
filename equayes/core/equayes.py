@@ -142,7 +142,7 @@ class Equayes:
         self.svi_ = None
 
         self._expr_sp_parameterized, self._exp_param_values = (
-            sp_utils.replace_constants_with_parameters(self._expr_sp)
+            sp_utils.replace_constants_with_parameters(self.expr_sp)
         )
         self._pyro_model = sp_to_pyro.create_pyro_model(
             self._expr_sp_parameterized,
@@ -175,7 +175,7 @@ class Equayes:
     def _setup_mcmc(self):
         """Configures the MCMC inference kernel and sampler based on the provided initialization parameters."""
 
-        match self._kernel_name:
+        match self.kernel_name:
             case "nuts":
                 self._kernel = NUTS(
                     self._pyro_model,
@@ -200,9 +200,9 @@ class Equayes:
             self._pyro_model, init_loc_fn=init_to_value(values=self._initial_params)
         )
         self._optim = pyro.optim.ClippedAdam(
-            {"lr": self.vi_lr, "lrd": (1e-1) ** (1 / self._n_vi_iter)}
+            {"lr": self.vi_lr, "lrd": (1e-1) ** (1 / self.vi_iter)}
         )
-        if self._jit_compile:
+        if self.jit_compile:
             self._loss = JitTrace_ELBO(
                 num_particles=self.n_particles, vectorize_particles=True
             )
@@ -241,7 +241,7 @@ class Equayes:
                         self._pyro_model, self._guide, self._optim, self._loss
                     )
                 self.losses_ = []
-                for i in range(self._n_vi_iter):
+                for i in range(self.vi_iter):
                     loss = self.svi_.step(X, y)
                     self.losses_.append(loss)
                     if i % 100 == 0:
@@ -329,7 +329,15 @@ class Equayes:
             arviz.InferenceData | torch.distributions.Distribution: The posterior distribution.
         """
         if self.mcmc_ is not None:
-            return az.from_pyro(self._mcmc)
+            try:
+                return az.from_pyro(self.mcmc_)
+            except KeyError as e: # Automatic RandomWalk kernel fails, construct the arviz object manually.
+                samples = self.mcmc_.get_samples(group_by_chain=True)
+                posterior = {
+                    k: v.detach().cpu().numpy()
+                    for k, v in samples.items()
+                }
+                return az.from_dict(posterior=posterior)
         return self._guide.get_posterior()
 
     def render_model(self, x_dummy, filename=None):
